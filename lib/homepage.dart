@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:tflite/tflite.dart';
 
 class HomePage extends StatefulWidget {
   @override
@@ -10,17 +11,64 @@ class HomePage extends StatefulWidget {
 
 class _HomepageState extends State<HomePage> {
   bool _loading = true;
-  File image;
-  final _picker = ImagePicker();
+  File _image;
+  final picker = ImagePicker();
+  List _output;
 
-  Future getImage() async {
-    var pickedImage = await _picker.getImage(source: ImageSource.camera);
-    setState(() {
-      if (pickedImage != null) {
-        image = File(pickedImage.path);
-        _loading = false;
-      }
+  @override
+  void initState() {
+    super.initState();
+    loadModal().then((value) {
+      setState(() {});
     });
+  }
+
+  @override
+  void dispose() {
+    Tflite.close();
+    super.dispose();
+  }
+
+  classifyImage(File image) async {
+    var output = await Tflite.runModelOnImage(
+        path: image.path,
+        numResults: 2,
+        threshold: 0.5,
+        imageMean: 127.5,
+        imageStd: 127.5);
+    setState(() {
+      _output = output;
+      _loading = false;
+    });
+  }
+
+  loadModal() async {
+    await Tflite.loadModel(
+      model: 'assets/model_unquant.tflite',
+      labels: 'assets/labels.txt',
+    );
+  }
+
+  pickImageFromGallery() async {
+    var image = await picker.getImage(source: ImageSource.gallery);
+    if (image == null) return;
+
+    setState(() {
+      _image = File(image.path);
+    });
+
+    classifyImage(_image);
+  }
+
+  pickImageFromCamera() async {
+    var image = await picker.getImage(source: ImageSource.camera);
+    if (image == null) return;
+
+    setState(() {
+      _image = File(image.path);
+    });
+
+    classifyImage(_image);
   }
 
   @override
@@ -31,9 +79,7 @@ class _HomepageState extends State<HomePage> {
         child: Icon(
           Icons.add_a_photo,
         ),
-        onPressed: () {
-          getImage();
-        },
+        onPressed: () {},
       ),
       backgroundColor: Color(0xff101010),
       body: Container(
@@ -71,7 +117,26 @@ class _HomepageState extends State<HomePage> {
                         ],
                       ),
                     )
-                  : Container(),
+                  : Container(
+                      child: Column(
+                        children: [
+                          Container(
+                            height: 250.0,
+                            child: Image.file(_image),
+                          ),
+                          SizedBox(height: 20.0),
+                          _output != null
+                              ? Text(
+                                  '${_output[0]['label'].subString}',
+                                  style: TextStyle(
+                                    fontSize: 20.0,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Container()
+                        ],
+                      ),
+                    ),
             ),
             SizedBox(height: 30),
             Container(
@@ -79,7 +144,7 @@ class _HomepageState extends State<HomePage> {
               child: Column(
                 children: [
                   GestureDetector(
-                    onTap: () {},
+                    onTap: pickImageFromGallery,
                     child: Container(
                       width: MediaQuery.of(context).size.width - 210,
                       alignment: Alignment.center,
@@ -101,7 +166,7 @@ class _HomepageState extends State<HomePage> {
                   ),
                   SizedBox(height: 15),
                   GestureDetector(
-                    onTap: () {},
+                    onTap: pickImageFromCamera,
                     child: Container(
                       width: MediaQuery.of(context).size.width - 210,
                       alignment: Alignment.center,
